@@ -1,0 +1,173 @@
+esphome:
+  name: "dada"
+  friendly_name: "dada"
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: INFO
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "xolJT6EkUCIOMfbzdQT2kjAIV/F10CStIeSgCnq9m5s="
+
+ota:
+  password: "9c10f6571b505b15cc20a1a461753451"
+
+wifi:
+  ssid: "JDC"
+  password: "whowhowho"
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Dada_ap"
+    password: "qwe123456"
+
+captive_portal:
+
+# 添加dart甲醛传感器的自定义类
+external_components:
+  - source: 
+      type: local
+      path: my_components
+
+
+#定义3组uart针脚
+uart:
+#攀藤PMS7003 P M2.5颗粒传感器，urat0
+  - id: P7003
+    tx_pin: GPIO43
+    rx_pin: GPIO44
+    baud_rate: 9600
+
+#CO2传感器，mhz19b，urat1
+  - id: mhz19b
+    tx_pin: GPIO15
+    rx_pin: GPIO16
+    baud_rate: 9600
+
+#达特甲醛传感器，DART_WZ-S-K，urat2
+  - id: dart_wzsk
+    tx_pin: GPIO17
+    rx_pin: GPIO18
+    baud_rate: 9600
+
+
+#定义2组i2c针脚
+i2c:
+
+# 温湿度传感器，SHTC3，busa_a   
+   - id: bus_a
+     sda: GPIO05
+     scl: GPIO04
+     scan: true
+
+#挥发性有机物传感器，sgp30，bus_b
+   - id: bus_b
+     sda: GPIO07
+     scl: GPIO06
+     scan: true
+
+
+# 定义三组uart传感器，2组i2c传感器
+sensor:
+
+# 攀藤PMS7003 P M2.5颗粒传感器，urat0
+  - platform: pmsx003
+    uart_id: P7003
+    type: PMSX003
+    pm_1_0:
+      name: "pm10"
+      filters:
+        - sliding_window_moving_average:
+            window_size: 15
+            send_every: 15
+    pm_2_5:
+      name: "pm25"
+      filters:
+        - sliding_window_moving_average:
+            window_size: 15
+            send_every: 15
+    pm_10_0:
+      name: "pm100"
+      filters:
+        - sliding_window_moving_average:
+            window_size: 15
+            send_every: 15
+    update_interval: 30s
+
+# CO2传感器，mhz19b，urat1
+  - platform: mhz19
+    uart_id: mhz19b
+    co2:
+      name: "CO2"
+#    temperature:
+#      name: "MH-Z19 Temperature"
+    update_interval: 30s
+    
+# 达特甲醛传感器，DART_WZ-S-K，urat2
+  - platform: dart
+    uart_id: dart_wzsk
+    formaldehyde:
+      name: "HCHO"
+      id: HCHO
+    update_interval: 30s
+
+# 温湿度传感器，SHTC3，busa_a
+  - platform: shtcx
+    i2c_id: bus_a
+    temperature:
+      name: "Temperature"
+    humidity:
+      name: "Humidity"
+    address: 0x70
+    update_interval: 60s
+
+# 挥发性有机物传感器，sgp30，bus_b
+  - platform: sgp30
+    i2c_id: bus_b
+    eco2:
+      name: "eCO2"
+      accuracy_decimals: 1
+    tvoc:
+      name: "TVOC"
+      accuracy_decimals: 1
+    store_baseline: yes
+    address: 0x58
+    update_interval: 10s
+
+
+switch:
+#pms休眠状态开关.
+  - platform: gpio
+    pin: 
+      number: GPIO13
+      inverted: no
+    id: pms_set
+    name: "颗粒物传感器工作开关"
+
+binary_sensor:
+#获取pms传感器工作状态，延迟30秒工作，因为传感器前30秒工作时间为预热时间
+  - platform: template
+    name: "颗粒物传感器工作状态"
+    id: pms_awake_and_warm
+    lambda: |-
+      if (id(pms_set).state) {
+        return true;
+      } else {
+        return false;
+      }
+    filters:
+      - delayed_on: 30s
+
+interval:
+#每休眠180秒，工作120秒，攀藤PMS7003 P M2.5颗粒传感器
+  - interval: 180s
+    then:
+      - switch.turn_on: pms_set
+      - delay: 120s
+      - switch.turn_off: pms_set
